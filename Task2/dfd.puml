@@ -1,0 +1,66 @@
+@startuml
+actor "Медицинский\nперсонал" as med_staff
+actor "Клиенты / сотрудники\nбанка" as bank_users
+actor "Внутренние\nсотрудники" as inner_staff
+actor "Партнёрские\nсистемы" as partners
+actor "Аналитики" as analysts
+
+rectangle "Legacy DWH / BI\nпереходный контур" as legacy
+rectangle "Медицинские сервисы\nWeb · API Gateway · сервисы" as med
+rectangle "Клинический ИИ" as clinicalai
+database "Медицинская БД\nPostgreSQL + S3" as meddb
+database "Обезличенные\nданные для обучения ИИ" as aidb
+
+rectangle "FinTech\nWeb/Desktop + Gateway + сервисы" as fintech
+database "FinTech БД" as findb
+
+rectangle "Управление клиниками\nWeb + Gateway + сервисы" as admin
+database "БД управления" as admindb
+
+rectangle "Интеграция и загрузка\nREST + Kafka + ESB (временно)" as integration
+rectangle "Контроль публикации\nконтракт(DQ, запрет ПДн)" as filter
+database "Data LakeHouse" as lake
+
+database "Каталог данных\nметаданные + lineage + owners" as catalog
+rectangle "Портал витрин + BI" as bi
+rectangle "ИИ анализа\nне-медицинских данных" as analyticalai
+rectangle "IAM\nRBAC + ABAC + аудит" as iam
+
+med_staff --> med : запись / просмотр данных
+med --> meddb : медицинские записи
+med --> clinicalai : запрос на исследование анализа и помощь в диагнозе
+clinicalai --> med : результат в медконтур
+clinicalai --> aidb : одобренные обезличенные\nобучающие наборы
+
+bank_users --> fintech : платежи и банковские операции
+fintech --> findb : финансовые транзакции
+inner_staff --> admin : управление и учёт
+admin --> admindb : справочники / заявки
+admin --> med : разрешённые вызовы\nчерез Medical API
+med --> fintech : оплата через FinTech API
+admin --> fintech : разрешённые вызовы\nчерез FinTech API
+
+med --> integration : административные данные
+fintech --> integration : разрешённые агрегаты
+admin --> integration : операционная отчётность
+partners --> integration : партнёрские данные
+legacy ..> integration : разрешённые legacy данные
+integration --> filter : события и наборы по контракту
+filter --> lake : проверенные данные
+
+lake --> bi : витрины и OLAP-запросы
+catalog ..> bi : метаданные / доступные показатели
+catalog ..> lake : lineage и метаданные
+analysts --> bi : создание и запуск отчётов
+lake --> analyticalai : разрешённые не-мед. данные
+
+iam ..> bi : права и политики
+iam ..> med : права
+iam ..> fintech : права
+iam ..> admin : права
+
+legend bottom
+  Сплошная стрелка — поток данных
+  Пунктирная стрелка — политика доступа, метаданные либо миграция
+endlegend
+@enduml
