@@ -1,0 +1,65 @@
+@startuml
+left to right direction
+
+actor "(M) Администратор" as admin
+
+rectangle "Подготовка и запуск (M)" as prep {
+  rectangle "(M) Создать cloud / folder,\nподготовить права" as org
+  rectangle "(M) Подготовить YC_TOKEN,\ncloud_id, folder_id и SSH-ключ" as creds
+  rectangle "(M) Запустить Terraform CLI\ninit → plan → apply" as cli
+}
+
+rectangle "(T) Terraform конфигурация\nmain.tf + variables.tf + outputs.tf" as terraform
+cloud "Yandex Cloud API" as api
+
+node "Yandex Cloud: cloud / folder (M)\nресурсы лабораторного стенда" as yc {
+  node "(T) VPC: future2-lab-network\nru-central1-a" as vpc {
+
+    node "(T) EDGE — 10.20.10.0/24\nпубличная подсеть" as edge {
+      node "(T) VM bastion\n2 vCPU · 2 GB RAM\nUbuntu 24.04 · Public IP" as bastion
+      rectangle "(T) SG bastion\nSSH 22 ← admin_cidr" as sg_b
+      database "(T) Boot SSD 20 GB" as disk_b
+    }
+
+    node "(T) APP — 10.20.20.0/24\nприватная подсеть" as app {
+      node "(T) VM portal\n2 vCPU · 4 GB RAM\nUbuntu 24.04 · Private IP" as portal
+      rectangle "(T) SG portal\n22, 8080 ← EDGE" as sg_p
+      database "(T) Boot SSD 30 GB" as disk_p
+    }
+
+    node "(T) DATA — 10.20.30.0/24\nприватная подсеть" as data {
+      node "(T) VM analytics\n4 vCPU · 8 GB RAM\nUbuntu 24.04 · Private IP" as analytics
+      rectangle "(T) SG analytics\nSSH ← EDGE · 8123 ← APP" as sg_a
+      database "(T) Boot SSD 30 GB" as disk_a
+      database "(T) Data SSD 100 GB" as disk_data
+    }
+
+    rectangle "(T) Route table: private-routes\nAPP, DATA: 0.0.0.0/0 → NAT" as routes
+    rectangle "(T) NAT Gateway\nтолько исходящий трафик" as nat
+  }
+}
+
+cloud "Интернет\nисходящий доступ" as internet
+rectangle "После apply (M)\n• установить и настроить ПО (вне HCL)\n• разметить и смонтировать Data SSD\n• настроить секреты, резервные копии\n• защитить Terraform state" as post
+
+org --> creds
+creds --> cli
+cli --> terraform : запуск
+terraform --> api : провайдер
+api ..> vpc : создаёт ресурсы (T)
+
+admin --> bastion : SSH 22
+bastion --> portal : SSH 22 / 8080
+bastion --> analytics : SSH 22
+portal --> analytics : API 8123
+
+routes --> nat : маршрут 0.0.0.0/0
+nat --> internet : egress
+post ..> portal : настройка приложения
+post ..> analytics : настройка и диск
+
+legend bottom
+  (T) — создаётся / управляется Terraform
+  (M) — вручную или вне текущего Terraform-проекта
+endlegend
+@enduml
